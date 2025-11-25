@@ -13,6 +13,7 @@ class User(db.Model):
     email = Column(String(120), unique=True, nullable=False, index=True)
     name = Column(String(80), nullable=False)
     last_name = Column(String(80), nullable=False)
+    rut = Column(String(12), nullable=True)  # ✅ MEJORA #1: RUT chileno (formato: 12.345.678-9)
     password_hash = Column(String(255), nullable=True)  # Para futuro sistema de auth
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -27,6 +28,7 @@ class User(db.Model):
             'email': self.email,
             'name': self.name,
             'lastName': self.last_name,
+            'rut': self.rut,  # ✅ MEJORA #1: Incluir RUT en respuesta
             'isAdmin': self.is_admin,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None

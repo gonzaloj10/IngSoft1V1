@@ -25,6 +25,7 @@ def create_user():
             email=data['email'],
             name=data['name'],
             last_name=data['lastName'],
+            rut=data.get('rut'),  # ✅ MEJORA #1: Guardar RUT si está presente
             is_admin=data.get('isAdmin', False)
         )
         

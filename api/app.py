@@ -224,14 +224,14 @@ def create_app():
     from api.routes.reports import reports_bp
     from api.routes.purchases import purchases_bp
     from api.routes.tickets import tickets_bp
-    from api.routes.email import email_bp
+    from api.routes.email import email_bp  # ✅ MEJORA #3: Blueprint de emails
     
     app.register_blueprint(users_bp, url_prefix='/api')
     app.register_blueprint(events_bp, url_prefix='/api')
     app.register_blueprint(reports_bp, url_prefix='/api')
     app.register_blueprint(purchases_bp, url_prefix='/api')
     app.register_blueprint(tickets_bp, url_prefix='/api')
-    app.register_blueprint(email_bp, url_prefix='/api')
+    app.register_blueprint(email_bp, url_prefix='/api')  # ✅ MEJORA #3: Registrar blueprint de emails
     
     # Ruta simple para crear eventos (alternativa a Swagger)
     @app.route('/api/test/event', methods=['POST'])

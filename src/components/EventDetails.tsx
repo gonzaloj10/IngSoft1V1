@@ -185,17 +185,21 @@ export const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onNavigate 
                 <div>
                   <p className="text-muted-foreground">Entradas disponibles</p>
                   <div className="flex items-center gap-2">
-                    <p>{event.availableTickets} tickets</p>
-                    {event.availableTickets > 0 && event.availableTickets < 20 && (
-                      <span className="inline-flex items-center gap-1 bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                        <AlertTriangle className="w-3 h-3" />
-                        ¡Solo quedan {event.availableTickets}!
-                      </span>
-                    )}
-                    {event.availableTickets === 0 && (
-                      <span className="inline-flex items-center gap-1 bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                        Agotado
-                      </span>
+                    {event.availableTickets === 0 ? (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>
+                        <AlertTriangle className="w-4 h-4" />
+                        Entradas Agotadas
+                      </div>
+                    ) : (
+                      <>
+                        <p>{event.availableTickets} tickets</p>
+                        {event.availableTickets < 20 && (
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+                            <AlertTriangle className="w-3 h-3" />
+                            ¡Solo quedan {event.availableTickets} entradas!
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>

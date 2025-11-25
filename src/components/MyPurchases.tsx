@@ -1,351 +1,313 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { Card } from './ui/card';
 import { Button } from './ui/button';
-import { ArrowLeft, Loader2, Mail, Download, Calendar, MapPin, Ticket } from 'lucide-react';
+import { AlertCircle, Mail, Download, Calendar, MapPin, Ticket, CheckCircle2, XCircle } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 
 interface PurchaseWithDetails {
   id: number;
-  orderNumber: string;
+  event_name: string;
+  event_date: string;
+  event_location: string;
   quantity: number;
-  totalPrice: number;
-  purchaseDate: string;
-  status: string;
-  event: {
-    id: string;
-    title: string;
-    artist: string;
-    date: string;
-    venue: string;
-    image: string;
-  };
+  total_amount: number;
+  purchase_date: string;
 }
 
 interface MyPurchasesProps {
   onNavigate: (view: string) => void;
 }
 
-export const MyPurchases: React.FC<MyPurchasesProps> = ({ onNavigate }) => {
+// Helper function to format dates in Chilean timezone
+const formatearFecha = (dateString: string): string => {
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-CL', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'America/Santiago'  // Zona horaria de Chile
+    });
+  } catch {
+    return dateString;
+  }
+};
+
+export function MyPurchases({ onNavigate }: MyPurchasesProps) {
   const { user } = useAuth();
   const [purchases, setPurchases] = useState<PurchaseWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [resendingEmail, setResendingEmail] = useState<string | null>(null);
+  const [resendingEmail, setResendingEmail] = useState<number | null>(null);
+  const [downloadingPDF, setDownloadingPDF] = useState<number | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) {
-      onNavigate('home');
-      return;
-    }
-
     loadPurchases();
   }, [user]);
 
   const loadPurchases = async () => {
-    if (!user) return;
-
-    setLoading(true);
-    setError(null);
+    if (!user?.email) {
+      setError('No se encontró información del usuario');
+      setLoading(false);
+      return;
+    }
 
     try {
-      console.log('📥 Cargando compras del usuario:', user.id);
+      setLoading(true);
+      const response = await fetch(`http://localhost:5001/api/purchases/user/email/${encodeURIComponent(user.email)}`);
       
-      try {
-        // Intentar cargar desde el backend usando el email
-        const response = await fetch(`/api/purchases/user/email/${encodeURIComponent(user.email)}`, {
-          signal: AbortSignal.timeout(10000)
-        });
-
-        if (!response.ok) {
-          throw new Error('Error al cargar compras del servidor');
-        }
-
-        const data = await response.json();
-
-        if (data.success && data.purchases) {
-          console.log('✅ Compras cargadas desde servidor:', data.purchases.length);
-          
-          // Cargar eventos para cada compra
-          const purchasesWithEvents = await Promise.all(
-            data.purchases.map(async (purchase: any) => {
-              try {
-                const eventResponse = await fetch(`/api/events/${purchase.eventId}`);
-                if (eventResponse.ok) {
-                  const eventData = await eventResponse.json();
-                  return {
-                    ...purchase,
-                    event: eventData.event
-                  };
-                }
-              } catch {
-                console.warn('No se pudo cargar evento:', purchase.eventId);
-              }
-              return purchase;
-            })
-          );
-          
-          setPurchases(purchasesWithEvents.filter(p => p.event));
-          return;
-        }
-      } catch (backendError) {
-        console.warn('⚠️ Backend no disponible, intentando localStorage:', backendError);
+      if (!response.ok) {
+        throw new Error('Error al cargar las compras');
       }
+
+      const data = await response.json();
       
-      // Fallback: Cargar desde localStorage
-      const localPurchases = JSON.parse(localStorage.getItem('purchases') || '[]');
-      const userPurchases = localPurchases.filter((p: any) => p.userId === user.id);
+      // Ordenar por ID: más alto primero (compras más recientes)
+      const sortedPurchases = (data || []).sort((a: PurchaseWithDetails, b: PurchaseWithDetails) => {
+        return b.id - a.id; // Descendente: ID más alto (más reciente) primero
+      });
       
-      if (userPurchases.length > 0) {
-        console.log('📦 Compras cargadas desde localStorage:', userPurchases.length);
-        
-        // Cargar datos de eventos para cada compra
-        const purchasesWithEvents = await Promise.all(
-          userPurchases.map(async (purchase: any) => {
-            try {
-              const eventResponse = await fetch(`/api/events/${purchase.eventId}`);
-              if (eventResponse.ok) {
-                const eventData = await eventResponse.json();
-                return {
-                  ...purchase,
-                  event: eventData.event
-                };
-              }
-            } catch {
-              // Si no se puede cargar desde API, usar datos estáticos
-              const { events } = await import('../data/events');
-              const event = events.find(e => e.id === purchase.eventId);
-              if (event) {
-                return {
-                  ...purchase,
-                  event: {
-                    id: event.id,
-                    title: event.title,
-                    artist: event.artist,
-                    date: event.date,
-                    venue: event.venue,
-                    image: event.image
-                  }
-                };
-              }
-            }
-            return null;
-          })
-        );
-        
-        setPurchases(purchasesWithEvents.filter(p => p !== null));
-      } else {
-        console.log('ℹ️ No hay compras registradas');
-        setPurchases([]);
-      }
-    } catch (err: any) {
-      console.error('❌ Error cargando compras:', err);
-      setError('No se pudieron cargar tus compras. Por favor, intenta nuevamente.');
+      setPurchases(sortedPurchases);
+    } catch (err) {
+      console.error('Error loading purchases:', err);
+      setError('Error al cargar el historial de compras');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResendEmail = async (purchaseId: number, orderNumber: string) => {
-    setResendingEmail(orderNumber);
-
+  const handleResendEmail = async (purchaseId: number) => {
     try {
-      console.log('📧 Reenviando email para orden:', orderNumber);
+      setResendingEmail(purchaseId);
+      setSuccessMessage(null);
+      setErrorMessage(null);
       
-      const response = await fetch(`/api/purchases/${purchaseId}/resend-email`, {
+      const response = await fetch(`http://localhost:5001/api/purchases/${purchaseId}/resend-email`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         }
       });
 
-      if (!response.ok) {
-        throw new Error('Error al reenviar email');
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Error al reenviar el email');
       }
 
-      const data = await response.json();
+      setSuccessMessage('✅ Email de confirmación reenviado exitosamente. Revisa tu bandeja de entrada.');
       
-      if (data.success) {
-        alert(`✅ ${data.message}`);
-      } else {
-        throw new Error(data.error || 'Error desconocido');
-      }
+      // Auto-hide success message after 5 seconds
+      setTimeout(() => setSuccessMessage(null), 5000);
     } catch (err: any) {
-      console.error('❌ Error reenviando email:', err);
-      alert('❌ Error al reenviar el email. Intenta nuevamente.');
+      console.error('Error resending email:', err);
+      const errorMsg = err.message || 'No se pudo reenviar el email. Por favor verifica tu conexión e intenta nuevamente.';
+      setErrorMessage(`❌ ${errorMsg}`);
+      
+      // Auto-hide error message after 5 seconds
+      setTimeout(() => setErrorMessage(null), 5000);
     } finally {
       setResendingEmail(null);
     }
   };
 
-  const handleDownloadPDF = async (purchaseId: number, orderNumber: string) => {
+  const handleDownloadPDF = async (purchase: PurchaseWithDetails) => {
     try {
-      console.log('📥 Descargando PDF para orden:', orderNumber);
+      setDownloadingPDF(purchase.id);
+      setSuccessMessage(null);
+      setErrorMessage(null);
       
-      const response = await fetch(`/api/purchases/${purchaseId}/download-ticket`);
+      // Download PDF from backend endpoint
+      const response = await fetch(`http://localhost:5001/api/purchases/${purchase.id}/download-pdf`);
       
       if (!response.ok) {
-        throw new Error('Error al generar PDF');
+        throw new Error('Error al descargar el PDF');
       }
-
-      const data = await response.json();
       
-      if (data.success) {
-        alert(`✅ ${data.message}\n\nEn una implementación real, el PDF se descargaría automáticamente.`);
-        // TODO: Aquí iría la lógica para descargar el PDF real
-        // window.open(data.downloadUrl, '_blank');
-      } else {
-        throw new Error(data.error || 'Error desconocido');
-      }
-    } catch (err: any) {
-      console.error('❌ Error descargando PDF:', err);
-      alert('❌ Error al descargar el PDF. Intenta nuevamente.');
+      // Convert response to blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `entrada-${purchase.event_name.replace(/\s+/g, '-')}-${purchase.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      setSuccessMessage('📄 Entrada descargada exitosamente. Revisa tu carpeta de descargas.');
+      
+      // Auto-hide success message after 5 seconds
+      setTimeout(() => setSuccessMessage(null), 5000);
+    } catch (err) {
+      console.error('Error downloading PDF:', err);
+      setErrorMessage('❌ No se pudo descargar el PDF. Por favor verifica tu conexión e intenta nuevamente.');
+      
+      // Auto-hide error message after 5 seconds
+      setTimeout(() => setErrorMessage(null), 5000);
+    } finally {
+      setDownloadingPDF(null);
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="container mx-auto px-4 py-8">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground">Cargando tus compras...</p>
+          <p className="text-lg">Cargando historial de compras...</p>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Button
-          variant="ghost"
-          onClick={() => onNavigate('home')}
-          className="mb-6"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Volver a eventos
-        </Button>
-
-        <h1 className="mb-8">Mis Entradas</h1>
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">
-            {error}
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Card className="p-6">
+          <div className="flex items-center gap-2 text-red-600">
+            <AlertCircle className="h-5 w-5" />
+            <p>{error}</p>
           </div>
-        )}
+          <Button onClick={() => onNavigate('home')} className="mt-4">
+            Volver al inicio
+          </Button>
+        </Card>
+      </div>
+    );
+  }
 
-        {purchases.length === 0 ? (
-          <div className="text-center py-12 bg-card rounded-lg shadow-md">
-            <Ticket className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-            <h2 className="text-xl mb-2">No tienes compras todavía</h2>
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold mb-2">Mis Entradas</h1>
+        <p className="text-muted-foreground">
+          Historial de compras de {user?.email}
+        </p>
+      </div>
+
+      {/* Success Message */}
+      {successMessage && (
+        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+          <Mail className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-green-800 font-medium">{successMessage}</p>
+          </div>
+          <button 
+            onClick={() => setSuccessMessage(null)}
+            className="text-green-600 hover:text-green-800 flex-shrink-0"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {errorMessage && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+          <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-red-800 font-medium">{errorMessage}</p>
+          </div>
+          <button 
+            onClick={() => setErrorMessage(null)}
+            className="text-red-600 hover:text-red-800 flex-shrink-0"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {purchases.length === 0 ? (
+        <Card className="p-12 text-center">
+          <div className="max-w-md mx-auto">
+            <div className="mb-6 inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100">
+              <Ticket className="h-8 w-8 text-blue-600" />
+            </div>
+            <h2 className="text-2xl font-bold mb-3">Aún no has realizado ninguna compra</h2>
             <p className="text-muted-foreground mb-6">
-              Explora nuestros eventos y compra tus entradas
+              Este campo está vacío porque no tienes entradas compradas todavía.
+              Explora nuestros eventos y adquiere tus entradas para verlas aquí.
             </p>
-            <Button onClick={() => onNavigate('home')}>
-              Ver eventos disponibles
+            <Button 
+              onClick={() => onNavigate('home')}
+              size="lg"
+              className="w-full sm:w-auto"
+            >
+              Explorar Eventos Disponibles
             </Button>
           </div>
-        ) : (
-          <div className="space-y-6">
-            {purchases.map((purchase) => (
-              <div
-                key={purchase.id}
-                className="bg-card rounded-lg shadow-md overflow-hidden"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6">
-                  {/* Event Image */}
-                  <div className="md:col-span-1">
-                    <img
-                      src={purchase.event.image}
-                      alt={purchase.event.title}
-                      className="w-full h-48 object-cover rounded-lg"
-                    />
-                  </div>
-
-                  {/* Event Details */}
-                  <div className="md:col-span-2 space-y-4">
-                    <div>
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <h3>{purchase.event.title}</h3>
-                          <p className="text-muted-foreground">{purchase.event.artist}</p>
-                        </div>
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                          purchase.status === 'completed' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {purchase.status === 'completed' ? 'Completada' : 'Pendiente'}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-4 h-4" />
-                          {purchase.event.date}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <MapPin className="w-4 h-4" />
-                          {purchase.event.venue}
-                        </div>
-                      </div>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {purchases.map((purchase) => (
+            <Card key={purchase.id} className="p-6">
+              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold mb-2">
+                    {purchase.event_name || 'Evento'}
+                  </h3>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Calendar className="h-4 w-4" />
+                      <span>Evento: {formatearFecha(purchase.event_date)}</span>
                     </div>
-
-                    <div className="border-t border-border pt-4">
-                      <div className="grid grid-cols-2 gap-4 mb-4">
-                        <div>
-                          <p className="text-sm text-muted-foreground">Número de orden</p>
-                          <p className="font-mono font-medium">{purchase.orderNumber}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-muted-foreground">Fecha de compra</p>
-                          <p>{new Date(purchase.purchaseDate).toLocaleDateString('es-CL')}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-muted-foreground">Cantidad</p>
-                          <p>{purchase.quantity} entrada{purchase.quantity > 1 ? 's' : ''}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-muted-foreground">Total pagado</p>
-                          <p className="text-primary font-medium">
-                            ${purchase.totalPrice.toLocaleString('es-CL')}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Action Buttons */}
-                      <div className="flex gap-3">
-                        <Button
-                          variant="outline"
-                          onClick={() => handleResendEmail(purchase.id, purchase.orderNumber)}
-                          disabled={resendingEmail === purchase.orderNumber}
-                        >
-                          {resendingEmail === purchase.orderNumber ? (
-                            <>
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              Enviando...
-                            </>
-                          ) : (
-                            <>
-                              <Mail className="w-4 h-4 mr-2" />
-                              Reenviar confirmación
-                            </>
-                          )}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => handleDownloadPDF(purchase.id, purchase.orderNumber)}
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          Descargar entrada
-                        </Button>
-                      </div>
+                    
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <MapPin className="h-4 w-4" />
+                      <span>{purchase.event_location || 'Ubicación no especificada'}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Ticket className="h-4 w-4" />
+                      <span className="font-semibold">
+                        {purchase.quantity} {purchase.quantity === 1 ? 'entrada' : 'entradas'}
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-lg">
+                        Total: ${purchase.total_amount?.toLocaleString('es-CL') || '0'}
+                      </span>
+                    </div>
+                    
+                    <div className="text-xs text-muted-foreground">
+                      Compra realizada: {formatearFecha(purchase.purchase_date)}
                     </div>
                   </div>
                 </div>
+
+                <div className="flex flex-col gap-2 md:w-48">
+                  <Button
+                    onClick={() => handleResendEmail(purchase.id)}
+                    disabled={resendingEmail === purchase.id}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    <Mail className="h-4 w-4 mr-2" />
+                    {resendingEmail === purchase.id ? 'Enviando...' : 'Reenviar Email'}
+                  </Button>
+                  
+                  <Button
+                    onClick={() => handleDownloadPDF(purchase)}
+                    disabled={downloadingPDF === purchase.id}
+                    variant="default"
+                    className="w-full"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    {downloadingPDF === purchase.id ? 'Descargando...' : 'Descargar PDF'}
+                  </Button>
+                </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
-};
+}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Event } from '../types';
-import { Calendar, MapPin, AlertCircle, RefreshCw } from 'lucide-react';
+import { Calendar, MapPin, AlertCircle, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Button } from './ui/button';
 import { eventosPublicosService } from '../services/apiClient';
 
@@ -166,10 +166,20 @@ export const HomePage: React.FC<HomePageProps> = ({ onSelectEvent }) => {
                     </Button>
                   </div>
                   
-                  {/* Mostrar tickets disponibles si es relevante */}
-                  {event.availableTickets !== undefined && event.availableTickets < 50 && (
-                    <div className="mt-2 text-xs text-red-600 font-medium">
-                      Solo {event.availableTickets} entradas disponibles
+                  {/* Badges de disponibilidad */}
+                  {event.availableTickets !== undefined && (
+                    <div className="mt-3">
+                      {event.availableTickets === 0 ? (
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>
+                          <AlertTriangle className="w-3 h-3" />
+                          Entradas Agotadas
+                        </div>
+                      ) : event.availableTickets < 20 && (
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+                          <AlertTriangle className="w-3 h-3" />
+                          ¡Solo quedan {event.availableTickets} entradas!
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
